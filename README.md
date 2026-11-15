@@ -57,8 +57,8 @@ through `pymobiledevice3`.
 ## Install
 
 ```powershell
-git clone https://github.com/yourname/EmLoadServer
-cd EmLoadServer
+git clone https://github.com/EmCommunity/EmLoad
+cd EmLoad
 py -3.12 -m venv .venv
 .\.venv\Scripts\python -m pip install -e .          # CLI + engine
 .\.venv\Scripts\python -m pip install -e ".[gui]"   # + PySide6 GUI
