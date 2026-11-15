@@ -81,7 +81,7 @@ same way Xcode does, and to your iPhone over USB/Wi-Fi through
 Clone this repository and install the CLI from the project root:
 
 ```bash
-git clone https://github.com/EmTechFlagship/EmLoad.git
+git clone https://github.com/EmCommunity/EmLoad
 cd EmLoad
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
