@@ -1,7 +1,7 @@
 @echo off
 rem Double-clickable wrapper for the EmLoad CLI installer.
 rem Accepts the same switches as install-cli.ps1, e.g.
-rem   install-cli.cmd -SkipPySide6
+rem   install-cli.cmd -InstallDir D:\Tools\EmLoad
 rem   install-cli.cmd -Uninstall
 setlocal
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install-cli.ps1" %*

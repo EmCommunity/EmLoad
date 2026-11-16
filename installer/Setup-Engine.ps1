@@ -9,19 +9,15 @@
     virtual environment lives at <Root>\.venv, which is exactly where the WinUI
     shell's PythonLocator and the emload launcher look for it.
 
-    The requirements file is copied to a temporary file before pip sees it, so
-    "SkipPySide6" can drop the (optional, ~150 MB) PySide6 desktop GUI without
-    editing the shipped file.
+    Installs the CLI engine from requirements.txt. There is no desktop GUI
+    dependency: the virtual environment is the Python engine the ``emload``
+    command and the native shells share.
 
 .PARAMETER Root
     Directory that holds the emload package, pyproject.toml and requirements.txt.
 
 .PARAMETER Requirements
     Requirements file to install. Defaults to <Root>\requirements.txt.
-
-.PARAMETER SkipPySide6
-    Leave out PySide6. The WinUI desktop app does not need it; the CLI installer
-    includes it because "emload gui" (the PySide6 shell) uses it.
 
 .PARAMETER Force
     Delete and recreate the virtual environment even if it looks healthy.
@@ -47,7 +43,6 @@ param(
 
     [string]$Requirements,
 
-    [switch]$SkipPySide6,
     [switch]$Force,
     [switch]$Quiet,
     [string]$LogPath
@@ -237,35 +232,6 @@ function Select-Python {
     return $best
 }
 
-# --- requirements ----------------------------------------------------------
-
-function Get-EffectiveRequirements {
-    <# Writes the requirements pip should see and returns its path. #>
-    param([string]$Source, [bool]$WithoutPySide6)
-
-    if (-not (Test-Path -LiteralPath $Source)) {
-        throw "Requirements file not found: $Source"
-    }
-
-    $kept = New-Object System.Collections.ArrayList
-    foreach ($line in (Get-Content -LiteralPath $Source)) {
-        $trimmed = $line.Trim()
-        if (-not $trimmed) { continue }
-        if ($trimmed.StartsWith('#')) { continue }
-        if ($WithoutPySide6 -and $trimmed -match '^(?i)pyside6\b') {
-            Write-Status 'Skipping PySide6 (desktop shell does not use it).'
-            continue
-        }
-        [void]$kept.Add($trimmed)
-    }
-
-    if ($kept.Count -eq 0) { throw "No requirements left to install from $Source" }
-
-    $temp = Join-Path $env:TEMP ('emload-requirements-' + [guid]::NewGuid().ToString('N') + '.txt')
-    Set-Content -LiteralPath $temp -Value $kept -Encoding ASCII
-    return $temp
-}
-
 # --- main ------------------------------------------------------------------
 
 try {
@@ -338,51 +304,40 @@ try {
             Write-Status 'pip self-upgrade failed; continuing with the bundled pip.' 'WARN'
         }
 
-        $effective = $null
-        try {
-            $effective = Get-EffectiveRequirements -Source $Requirements -WithoutPySide6 ([bool]$SkipPySide6)
+        $pipArgs = @(
+            '-m', 'pip', 'install',
+            '--disable-pip-version-check',
+            '--no-input',
+            '--no-warn-script-location',
+            '--retries', '3',
+            '--timeout', '60',
+            '-r', $Requirements
+        )
 
-            $pipArgs = @(
-                '-m', 'pip', 'install',
-                '--disable-pip-version-check',
-                '--no-input',
-                '--no-warn-script-location',
-                '--retries', '3',
-                '--timeout', '60',
-                '-r', $effective
-            )
-
-            $wheelhouse = Join-Path $Root 'wheelhouse'
-            if (Test-Path -LiteralPath $wheelhouse) {
-                $wheels = @(Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -ErrorAction SilentlyContinue)
-                if ($wheels.Count -gt 0) {
-                    Write-Status "Installing from the bundled wheelhouse ($($wheels.Count) wheels, offline)."
-                    $pipArgs += @('--no-index', '--find-links', $wheelhouse)
-                }
-            }
-
-            Write-Status 'Installing Python packages (this can take a few minutes) ...'
-            & $script:VenvPython @pipArgs
-            if ($LASTEXITCODE -ne 0) {
-                Write-Status 'First pip run failed; retrying once ...' 'WARN'
-                & $script:VenvPython @pipArgs
-                if ($LASTEXITCODE -ne 0) {
-                    Fail ("pip could not install the requirements (exit code $LASTEXITCODE). " +
-                          "Check the log, then re-run this installer. If you are offline, " +
-                          "build the installer with -Offline so it carries a wheelhouse.") 4
-                }
+        $wheelhouse = Join-Path $Root 'wheelhouse'
+        if (Test-Path -LiteralPath $wheelhouse) {
+            $wheels = @(Get-ChildItem -LiteralPath $wheelhouse -Filter '*.whl' -ErrorAction SilentlyContinue)
+            if ($wheels.Count -gt 0) {
+                Write-Status "Installing from the bundled wheelhouse ($($wheels.Count) wheels, offline)."
+                $pipArgs += @('--no-index', '--find-links', $wheelhouse)
             }
         }
-        finally {
-            if ($effective -and (Test-Path -LiteralPath $effective)) {
-                Remove-Item -LiteralPath $effective -Force -ErrorAction SilentlyContinue
+
+        Write-Status 'Installing Python packages (this can take a few minutes) ...'
+        & $script:VenvPython @pipArgs
+        if ($LASTEXITCODE -ne 0) {
+            Write-Status 'First pip run failed; retrying once ...' 'WARN'
+            & $script:VenvPython @pipArgs
+            if ($LASTEXITCODE -ne 0) {
+                Fail ("pip could not install the requirements (exit code $LASTEXITCODE). " +
+                      "Check the log, then re-run this installer. If you are offline, " +
+                      "build the installer with -Offline so it carries a wheelhouse.") 4
             }
         }
     }
 
     Write-Status 'Verifying the engine ...'
     $probe = 'import emload, pymobiledevice3, srp, cryptography, requests, certifi, wsproto'
-    if (-not $SkipPySide6) { $probe += ', PySide6' }
 
     Push-Location $Root
     $verifyOk = $false
@@ -409,17 +364,6 @@ for %%I in ("%~dp0..") do set "EMLOAD_HOME=%%~fI"
 "%EMLOAD_HOME%\.venv\Scripts\python.exe" -m emload %*
 "@
     Set-Content -LiteralPath (Join-Path $script:BinDir 'emload.cmd') -Value $cliShim -Encoding ASCII
-
-    if (-not $SkipPySide6) {
-        $guiShim = @"
-@echo off
-rem EmLoad PySide6 desktop launcher. Generated by Setup-Engine.ps1.
-setlocal
-for %%I in ("%~dp0..") do set "EMLOAD_HOME=%%~fI"
-start "" "%EMLOAD_HOME%\.venv\Scripts\pythonw.exe" -m emload gui
-"@
-        Set-Content -LiteralPath (Join-Path $script:BinDir 'emload-gui.cmd') -Value $guiShim -Encoding ASCII
-    }
 
     Write-Status 'Engine is ready.' 
     if (-not $Quiet) {

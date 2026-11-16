@@ -30,8 +30,7 @@ public sealed partial class AccountPage : Page
 
             if (!status.Authenticated && status.AccountCount > 0)
             {
-                // A saved session exists but none is active: resume it, like the
-                // PySide6 window does on open.
+                // A saved session exists but none is active: resume it.
                 AccountTitle.Text = "Resuming saved session…";
                 try
                 {

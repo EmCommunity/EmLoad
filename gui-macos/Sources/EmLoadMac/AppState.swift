@@ -201,8 +201,7 @@ final class AppState: ObservableObject {
             let raw = try await call("account.status")
             var status = AccountStatus(dictionary: JSON.dict(raw) ?? [:])
 
-            // A saved session exists but none is active: resume it, matching
-            // the PySide6 window's startup behaviour.
+            // A saved session exists but none is active: resume it.
             if !status.authenticated && status.accountCount > 0 {
                 _ = try? await call("account.resume")
                 let retried = try await call("account.status")

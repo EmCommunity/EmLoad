@@ -1,20 +1,18 @@
 """Front-end-agnostic description of the Misc tweak dialogs.
 
-The PySide6 GUI builds the SpringBoard / Daemons / Liquid Glass dialogs by hand
-(``emload.gui.nugget_dialogs``). A non-Qt front end cannot import that module,
-so this module describes the same dialogs as plain data:
+The CLI and the native apps share this description of the SpringBoard,
+Daemons, and Liquid Glass controls:
 
     {"group": "springboard", "title": "...", "subtitle": "...",
      "controls": [{"id": ..., "kind": "tri"|"check"|"text"|"number",
                    "label": ..., "state"|"value": ...}, ...]}
 
-and applies edits back onto the shared tweak registry
+Edits apply back onto the shared tweak registry
 (:data:`emload.nugget.tweaks.tweaks`). The UI stays a dumb renderer; every
 tweak semantic (radio defaults, inverted values, daemon groups, master toggles)
 lives here in Python.
 
-Ported behavior from Nugget27 (AGPL-3.0) via
-``emload.gui.nugget_dialogs``.
+Ported behavior from Nugget27 (AGPL-3.0).
 """
 
 from __future__ import annotations
@@ -239,7 +237,7 @@ def set_control(
     value: Any = None,
     checked: bool | None = None,
 ) -> dict[str, Any]:
-    """Apply one control edit, mirroring the PySide6 dialog handlers.
+    """Apply one control edit.
 
     ``state`` is for radio rows (``default``/``enabled``/``disabled``),
     ``value`` for text/number/check controls, ``checked`` for daemon groups.
@@ -251,7 +249,7 @@ def set_control(
     if control_id.startswith("Daemon."):
         # ``Daemon`` is an enum member: toggling a group writes every key it
         # owns and, when enabling, also switches on the master "Modify Daemons"
-        # toggle (matches the PySide6 dialog's _on_daemon).
+        # toggle.
         master = tweaks[TweakID.Daemons]
         enabled = bool(checked)
         master.set_multiple_values(list(target.value), value=enabled)

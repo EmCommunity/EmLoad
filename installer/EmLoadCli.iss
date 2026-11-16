@@ -1,9 +1,7 @@
 ; ---------------------------------------------------------------------------
 ; EmLoad - command-line installer.
 ;
-; Installs the same Python engine/requirements.txt as the WinUI setup, but
-; without the desktop shell: just `emload` (plus `emload gui` when PySide6 is
-; included). Per-user, no admin prompt.
+; Installs the Python engine and the emload CLI. Per-user, no admin prompt.
 ;
 ; Build with: powershell -File installer\build-installer.ps1
 ; ---------------------------------------------------------------------------
@@ -49,7 +47,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "addpath"; Description: "Add the emload command to my user PATH"; GroupDescription: "Command line:"
-Name: "pyside"; Description: "Include PySide6 for the optional desktop GUI (emload gui)"; GroupDescription: "Python engine:"
 Name: "zsign"; Description: "Download zsign now (required to sign apps)"; GroupDescription: "Python engine:"
 
 [Files]

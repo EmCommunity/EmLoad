@@ -51,7 +51,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "addpath"; Description: "Add the emload command to my user PATH"; GroupDescription: "Command line:"
-Name: "pyside"; Description: "Also install the optional PySide6 desktop GUI (+150 MB)"; GroupDescription: "Python engine:"; Flags: unchecked
 Name: "zsign"; Description: "Download zsign now (required to sign apps)"; GroupDescription: "Python engine:"
 
 [Files]

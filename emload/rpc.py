@@ -2,7 +2,7 @@
 
 The WinUI app (``gui-winui/``) is a thin C# shell: every operation that touches
 an iPhone, Apple's servers, or the filesystem still runs here, in Python, using
-exactly the same ``emload`` modules the CLI and the PySide6 GUI use.
+exactly the same ``emload`` modules the CLI uses.
 
 Transport
 ---------
@@ -29,9 +29,7 @@ Concurrency
 -----------
 Requests are handled on a small thread pool, so a two-minute sideload does not
 block ``devices.list`` or a device event. Writes to stdout are serialized by a
-lock (a JSON line is never interleaved). Nothing here imports PySide6, which
-also keeps the process clear of the Qt/Python 3.15 lazy-import incompatibility
-that breaks ``asyncio.to_thread`` inside the Qt app.
+lock (a JSON line is never interleaved).
 """
 
 from __future__ import annotations
@@ -67,7 +65,7 @@ from .nugget import schema as nugget_schema
 _MAX_WORKERS = 8
 
 #: Passwords for the two-step Apple ID flow, held in memory only until the 2FA
-#: code arrives (same lifetime as the PySide6 dialog's password field).
+#: code arrives.
 _pending_passwords: dict[str, str] = {}
 
 
@@ -111,7 +109,7 @@ def _as_list(value: Any) -> list[Any]:
 
 
 # --------------------------------------------------------------------------- #
-# Settings (the same config.json the PySide6 Settings page writes)
+# Settings (config.json shared by the CLI and the native apps)
 # --------------------------------------------------------------------------- #
 def _read_config() -> dict[str, Any]:
     try:
@@ -277,7 +275,7 @@ class Handlers:
             self._after_attach(serial)
 
     def _after_attach(self, serial: str) -> None:
-        """Provision new devices automatically (mirrors the PySide6 window)."""
+        """Provision new devices automatically when they attach."""
         try:
             result = provision.ensure_provisioned_for_device(serial)
             self._w.send({"event": "provision.result", "udid": serial, "result": _as_dict(result)})

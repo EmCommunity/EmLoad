@@ -6,8 +6,7 @@
 ;   * optionally put <app>\bin on the user PATH (Set-UserPath.ps1 does that,
 ;     because Inno's Pascal script cannot broadcast WM_SETTINGCHANGE itself).
 ;
-; The tasks consulted here - "pyside" and "addpath" - are declared by each
-; installer's own [Tasks] section.
+; The "addpath" task is declared by each installer's own [Tasks] section.
 ; ---------------------------------------------------------------------------
 
 [Code]
@@ -29,13 +28,6 @@ begin
     Result := ResultCode
   else
     Result := -1;
-end;
-
-function EngineArguments: String;
-begin
-  Result := '';
-  if not WizardIsTaskSelected('pyside') then
-    Result := Result + ' -SkipPySide6';
 end;
 
 procedure UpdatePathEntry(const ExtraArguments: String);
@@ -72,8 +64,7 @@ begin
     ResultCode := RunPowerShell(
       '-File "' + ExpandConstant('{app}\tools\Setup-Engine.ps1') + '"' +
       ' -Root "' + ExpandConstant('{app}') + '"' +
-      ' -LogPath "' + EngineLogPath + '"' +
-      EngineArguments);
+      ' -LogPath "' + EngineLogPath + '"');
 
     if ResultCode = 0 then
       Break;

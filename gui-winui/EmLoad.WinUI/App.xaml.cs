@@ -22,7 +22,7 @@ public partial class App : Application
         UnhandledException += (_, args) =>
         {
             // A XAML-thread crash must not close the window silently; log it and
-            // keep going, matching the PySide6 excepthook behaviour.
+            // keep going.
             args.Handled = true;
             State.ReportError($"{args.Message}\n\n{args.Exception?.StackTrace}");
         };

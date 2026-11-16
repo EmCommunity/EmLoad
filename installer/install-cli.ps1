@@ -22,9 +22,6 @@
     Folder that holds emload\, pyproject.toml and requirements.txt. Defaults to
     the repository this script was run from.
 
-.PARAMETER SkipPySide6
-    Do not install PySide6. "emload" works; "emload gui" (PySide6 shell) will not.
-
 .PARAMETER SkipPath
     Leave the user PATH untouched (run emload from <InstallDir>\bin).
 
@@ -41,7 +38,7 @@
     .\install-cli.ps1
 
 .EXAMPLE
-    .\install-cli.ps1 -InstallDir 'D:\Tools\EmLoad' -SkipPySide6
+    .\install-cli.ps1 -InstallDir 'D:\Tools\EmLoad'
 
 .EXAMPLE
     .\install-cli.ps1 -Uninstall
@@ -53,7 +50,6 @@ param(
     [string]$DisplayVersion = '0.1.0 RC 1',
     [string]$ProductName = 'EmLoad CLI',
 
-    [switch]$SkipPySide6,
     [switch]$SkipPath,
     [switch]$Force,
     [switch]$Quiet,
@@ -296,7 +292,6 @@ function Install-EmLoad {
         Requirements = (Join-Path $script:InstallDir 'requirements.txt')
         Quiet        = $Quiet
     }
-    if ($SkipPySide6) { $engineArgs['SkipPySide6'] = $true }
     if ($Force) { $engineArgs['Force'] = $true }
 
     $setupEngine = Join-Path $script:ToolsDir 'Setup-Engine.ps1'
@@ -335,9 +330,6 @@ function Install-EmLoad {
         Write-Host '  Open a new terminal, then run:' -ForegroundColor Gray
         Write-Host '    emload doctor        check the environment' -ForegroundColor Gray
         Write-Host '    emload setup         download zsign (required to sign)' -ForegroundColor Gray
-        if (-not $SkipPySide6) {
-            Write-Host '    emload gui           open the PySide6 desktop app' -ForegroundColor Gray
-        }
         Write-Host ''
         Write-Host '  Without a new terminal, use:' -ForegroundColor DarkGray
         Write-Host ("    `"{0}`"" -f (Join-Path $script:BinDir 'emload.cmd')) -ForegroundColor DarkGray

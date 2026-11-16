@@ -99,7 +99,7 @@ on the run).
 ├─ pyproject.toml
 ├─ requirements.txt
 ├─ .venv\                      created during installation
-├─ bin\emload.cmd              CLI launcher (+ emload-gui.cmd with PySide6)
+├─ bin\emload.cmd              CLI launcher
 └─ tools\Setup-Engine.ps1      repair / re-run helper
 ```
 
@@ -119,8 +119,8 @@ Both installers call [Setup-Engine.ps1](Setup-Engine.ps1) during
 1. find a usable interpreter (`EMLOAD_PYTHON`, `py -3.12`…`py -3.10`,
    `python` on PATH, registry installs, common folders),
 2. create `.venv` with it (an existing healthy venv is reused),
-3. `pip install -r requirements.txt` (PySide6 filtered out when the task is
-   unticked; `wheelhouse\` is used with `--no-index` when present),
+3. `pip install -r requirements.txt` (`wheelhouse\` is used with `--no-index`
+   when present),
 4. import-test the result and write `bin\emload.cmd`.
 
 On failure the wizard offers **Abort / Retry / Ignore**. Ignore keeps the files
@@ -143,7 +143,6 @@ does without Inno Setup:
 
 ```powershell
 .\installer\install-cli.ps1                       # %LOCALAPPDATA%\Programs\EmLoad CLI
-.\installer\install-cli.ps1 -SkipPySide6
 .\installer\install-cli.ps1 -InstallDir D:\Tools\EmLoad
 .\installer\install-cli.ps1 -Uninstall
 ```
@@ -155,7 +154,7 @@ double-clickable wrapper that keeps the window open on errors.
 ## Silent install and testing
 
 ```powershell
-# install without UI; /TASKS also drives which optional deps are installed
+# install without UI
 .\dist\EmLoad-Setup-0.1.0-beta2.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART `
     /DIR="$env:TEMP\EmLoad" /TASKS="addpath" /LOG="$env:TEMP\emload-setup.log"
 
