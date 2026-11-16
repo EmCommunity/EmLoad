@@ -60,7 +60,6 @@ enum AppSection: String, CaseIterable, Identifiable {
     case sideload
     case library
     case jit
-    case misc
     case account
     case settings
     case diagnostics
@@ -78,7 +77,7 @@ enum AppSection: String, CaseIterable, Identifiable {
                 return membership.normalizedTier == "plus"
             case .proBenefits:
                 return membership.normalizedTier == "pro"
-            case .misc, .library, .iosSetup, .store:
+            case .library, .iosSetup, .store:
                 return false
             case .jit:
                 return true
@@ -99,7 +98,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .sideload: return "Sideload"
         case .library: return "Library"
         case .jit: return "JIT"
-        case .misc: return "Misc Tweaks"
         case .account: return "Account"
         case .settings: return "Settings"
         case .diagnostics: return "Diagnostics"
@@ -126,8 +124,6 @@ enum AppSection: String, CaseIterable, Identifiable {
             return "Apps EmLoad has installed, with their remaining signature lifetime."
         case .jit:
             return "Turn on just-in-time compilation for a sideloaded app until it quits."
-        case .misc:
-            return "SpringBoard, daemon and Liquid Glass tweaks applied through sparserestore."
         case .account:
             return "The Apple ID used for certificates, App IDs and provisioning profiles."
         case .settings:
@@ -146,7 +142,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .sideload: return "square.and.arrow.down"
         case .library: return "square.grid.2x2"
         case .jit: return "bolt"
-        case .misc: return "wand.and.stars"
         case .account: return "person.crop.circle"
         case .settings: return "gearshape"
         case .diagnostics: return "stethoscope"
@@ -330,7 +325,6 @@ struct RootView: View {
         case .sideload: SideloadView()
         case .library: LibraryView(layout: $libraryLayout)
         case .jit: JitView()
-        case .misc: MiscView()
         case .account: AccountView()
         case .settings: SettingsView()
         case .diagnostics: DiagnosticsView()

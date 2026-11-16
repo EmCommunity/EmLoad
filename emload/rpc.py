@@ -58,7 +58,6 @@ from . import (
     update,
 )
 from .errors import EmLoadError
-from .nugget import schema as nugget_schema
 
 #: How many requests may run at once. Sideloads are long; device listings are
 #: quick and must not queue behind them.
@@ -611,41 +610,6 @@ class Handlers:
     def signed_clean(self, params: dict[str, Any]) -> dict[str, Any]:
         return _as_dict(sideload.clean_signed(params.get("directory")))
 
-    # -- Misc tweaks ------------------------------------------------------- #
-    def nugget_schema(self, params: dict[str, Any]) -> dict[str, Any]:
-        return nugget_schema.describe(params["group"])
-
-    def nugget_set(self, params: dict[str, Any]) -> dict[str, Any]:
-        control = nugget_schema.set_control(
-            params["group"],
-            params["id"],
-            state=params.get("state"),
-            value=params.get("value"),
-            checked=params.get("checked"),
-        )
-        return {"control": control}
-
-    def nugget_apply(self, params: dict[str, Any], progress: Callable[..., None]) -> dict[str, Any]:
-        options = nugget_schema.apply_options(
-            respring=bool(params.get("respring")),
-            reboot=bool(params.get("reboot", True)),
-            apply_method=params.get("applyMethod", "auto"),
-            transfer_mode=params.get("transferMode", "localhost"),
-            skip_setup=bool(params.get("skipSetup", True)),
-        )
-        return _as_dict(_nugget_apply(params["udid"], options, progress))
-
-    def nugget_respring(self, params: dict[str, Any], progress: Callable[..., None]) -> dict[str, Any]:
-        from .nugget import respring_device
-
-        return _as_dict(respring_device(params["udid"], on_progress=progress))
-
-
-def _nugget_apply(udid: str, options: dict[str, Any], progress: Callable[..., None]) -> Any:
-    from .nugget import apply_tweaks
-
-    return apply_tweaks(udid, on_progress=progress, **options)
-
 
 # ``progress`` is optional for most handlers; this table records which ones
 # accept the streaming callback so dispatch stays a simple loop.
@@ -653,8 +617,6 @@ _STREAMING = {
     "sideload.run": "sideload_run",
     "library.refresh": "library_refresh",
     "emstore.install": "emstore_install",
-    "nugget.apply": "nugget_apply",
-    "nugget.respring": "nugget_respring",
     "jit.enable": "jit_enable",
     "app.update.apply": "app_update_apply",
 }
@@ -700,10 +662,6 @@ _METHODS = {
     "signed.clean": "signed_clean",
     "emstore.status": "emstore_status",
     "emstore.install": "emstore_install",
-    "nugget.schema": "nugget_schema",
-    "nugget.set": "nugget_set",
-    "nugget.apply": "nugget_apply",
-    "nugget.respring": "nugget_respring",
 }
 
 

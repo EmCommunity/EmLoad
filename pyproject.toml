@@ -41,7 +41,7 @@ emload = "emload.cli:main"
 include = ["emload*"]
 
 [tool.setuptools.package-data]
-emload = ["certs/*.pem", "nugget/assets/*", "nugget/assets/bookrestore/*"]
+emload = ["certs/*.pem"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

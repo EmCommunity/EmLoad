@@ -369,51 +369,6 @@ struct DoctorCheck: Identifiable {
     }
 }
 
-// MARK: - Misc tweaks
-
-struct TweakGroup {
-    let group: String
-    let title: String
-    let subtitle: String
-    let controls: [TweakControl]
-
-    init(dictionary: [String: Any]) {
-        group = JSON.string(dictionary["group"]) ?? ""
-        title = JSON.string(dictionary["title"]) ?? "Tweaks"
-        subtitle = JSON.string(dictionary["subtitle"]) ?? ""
-        let rows = dictionary["controls"] as? [[String: Any]] ?? []
-        controls = rows.map(TweakControl.init)
-    }
-}
-
-struct TweakControl: Identifiable {
-    let id: String
-    let kind: String
-    let label: String?
-    let text: String?
-    let placeholder: String?
-    let invert: Bool
-    let state: String?
-    let value: Any?
-    let keys: [String]
-    let minimum: Int?
-    let maximum: Int?
-
-    init(dictionary: [String: Any]) {
-        id = JSON.string(dictionary["id"]) ?? UUID().uuidString
-        kind = JSON.string(dictionary["kind"]) ?? "label"
-        label = JSON.string(dictionary["label"])
-        text = JSON.string(dictionary["text"])
-        placeholder = JSON.string(dictionary["placeholder"])
-        invert = JSON.bool(dictionary["invert"]) ?? false
-        state = JSON.string(dictionary["state"])
-        value = dictionary["value"]
-        keys = JSON.strings(dictionary["keys"])
-        minimum = JSON.int(dictionary["min"])
-        maximum = JSON.int(dictionary["max"])
-    }
-}
-
 // MARK: - Small UI helpers
 
 enum DataURI {

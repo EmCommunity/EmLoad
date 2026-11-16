@@ -3,7 +3,7 @@
 A native SwiftUI shell for the existing EmLoad Python engine. It speaks the
 same newline-delimited JSON-RPC protocol as the WinUI app (`emload rpc`), so
 there is exactly one implementation of Apple ID auth, provisioning, signing,
-installation, refresh and the Nugget tweak schema.
+installation and refresh.
 
 ```
 EmLoad.app (SwiftUI)
@@ -16,8 +16,7 @@ python -m emload rpc
       ├── signing / zsign     IPA re-signing
       ├── device / usbmuxd    USB + Wi-Fi device I/O
       ├── sideload / registry install + 7-day refresh
-      ├── jit                 debugserver attach/detach for JIT
-      └── nugget              SpringBoard / daemons / Liquid Glass
+      └── jit                 debugserver attach/detach for JIT
 ```
 
 ## Requirements
@@ -164,21 +163,12 @@ gui-macos/
         ├── DevicesView.swift
         ├── SideloadView.swift
         ├── LibraryView.swift
-        ├── MiscView.swift        dynamic Nugget schema renderer (hidden)
         ├── AccountView.swift
         ├── SettingsView.swift
         └── DiagnosticsView.swift
 ```
 
 ## Hidden pages and developer switches
-
-`Misc Tweaks` stays fully implemented but is not listed in the sidebar. The
-executable honours `EMLOAD_SECTION` for the initial page, so it remains
-reachable for development:
-
-```bash
-EMLOAD_SECTION=misc ./dist/EmLoad.app/Contents/MacOS/EmLoadMac
-```
 
 EmSideStore is disabled in the macOS UI until further notice: it is no longer
 shown on the Devices page or in Settings. The views, models, status calls and
