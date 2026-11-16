@@ -13,6 +13,8 @@ reporting/cleanup of a folder full of kept IPAs.
 from __future__ import annotations
 
 import datetime
+import ctypes
+import os
 import shutil
 import stat
 import tempfile
@@ -39,6 +41,42 @@ SCRATCH_PREFIX = "eml_"
 # scratch directory's own path length decides whether an app can be signed at all.
 _MAX_PATH = 259
 _ZSIGN_HEADROOM = 34
+
+# When installd refuses an app because its signature/profile failed verification,
+# the cure is a fresh provisioning profile (a new UUID), not more of the same
+# bytes. Bound the automatic re-issue so a device stuck in a bad state cannot
+# burn Apple's profile downloads forever: 1 initial attempt + 2 regenerations.
+MAX_PROFILE_REGENERATIONS = 2
+
+# Errors that indicate the provisioning profile is stale/broken and a fresh one
+# should be generated.  Broadened beyond the original verification-only check to
+# also catch "could not provision", profile install failures, and similar issues
+# where the profile itself is the problem rather than the device or IPA.
+_PROVISIONING_ERROR_HINTS = (
+    "could not provision",
+    "could not be verified",
+    "couldn't be verified",
+    "failed to verify",
+    "verification failed",
+    "does not verify",
+    "integrity",
+    "applicationverificationfailed",
+    "profile",
+    "provision",
+    "signing",
+    "certificate",
+)
+
+
+def is_provisioning_error(exc: Exception) -> bool:
+    """True when ``exc`` is a provisioning or profile problem that a fresh profile may fix.
+
+    Broader than ``apps.is_verification_failure``: catches "could not provision",
+    profile install failures, stale certificate issues, and similar errors where
+    the signing assets (profile, certificate) are the likely culprit.
+    """
+    text = str(exc).lower()
+    return any(hint in text for hint in _PROVISIONING_ERROR_HINTS)
 
 
 class SideloadError(EmLoadError):
@@ -106,21 +144,59 @@ def _as_signed_dir(directory: str | None) -> Path:
     return Path(directory).expanduser().resolve()
 
 
-def _scratch_root(target: Path, deepest: int) -> Path:
-    """Where this run's scratch directory should live, given how deep the IPA is.
+def _scratch_roots(target: Path, deepest: int) -> list[Path]:
+    """Candidate scratch locations, shortest usable Windows location first.
 
-    Beside the signed output by preference, so the heavy I/O stays on the disk the
-    user chose. That is a performance preference though, and fitting inside the
-    platform's path limit is correctness - so a bundle deep enough to overflow goes
-    to the system temp directory instead, which is both shorter and where every
-    other program puts its scratch.
+    zsign uses legacy path handling, so the user's Temp folder can itself be too
+    deep. ``C:\\eml`` leaves enough room for almost every IPA and is created only
+    when needed. Windows Temp and the regular Temp folder remain fallbacks for
+    machines where creating a directory at the drive root is not permitted.
     """
-    if deepest <= 0:
-        return target
     budget = _MAX_PATH - _ZSIGN_HEADROOM - deepest - len(SCRATCH_PREFIX) - 8
-    if len(str(target)) <= budget:
-        return target
-    return Path(tempfile.gettempdir())
+    candidates = [target] if deepest <= 0 or len(str(target)) <= budget else []
+    if os.name == "nt":
+        drive_root = Path(tempfile.gettempdir()).anchor
+        if drive_root:
+            candidates.extend((Path(drive_root) / "eml", Path(os.environ.get("SystemRoot", r"C:\\Windows")) / "Temp"))
+        # A normal user cannot always create C:\\eml, while their Temp folder
+        # is writable but often too long for deeply nested app bundles. Use
+        # its 8.3 alias when Windows has one.
+        short_temp = _short_windows_path(Path(tempfile.gettempdir()))
+        if short_temp is not None:
+            candidates.append(short_temp)
+    elif target not in candidates:
+        # MAX_PATH is specific to zsign's Windows file handling. On macOS and
+        # other platforms, keep scratch beside the chosen output directory.
+        candidates.insert(0, target)
+    candidates.append(Path(tempfile.gettempdir()))
+
+    unique: list[Path] = []
+    for candidate in candidates:
+        if candidate not in unique:
+            unique.append(candidate)
+    return unique
+
+
+def _short_windows_path(path: Path) -> Path | None:
+    """Return a Windows 8.3 alias for an existing path when available."""
+    if os.name != "nt":
+        return None
+    try:
+        get_short_path = ctypes.windll.kernel32.GetShortPathNameW
+        get_short_path.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint)
+        get_short_path.restype = ctypes.c_uint
+        source = str(path)
+        required = get_short_path(source, None, 0)
+        if not required:
+            return None
+        buffer = ctypes.create_unicode_buffer(required)
+        written = get_short_path(source, buffer, required)
+        if not written or written >= required:
+            return None
+        alias = Path(buffer.value)
+        return alias if len(str(alias)) < len(source) else None
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
 
 
 def _open_signed_dir(directory: str | None, deepest: int = 0) -> tuple[Path, Path]:
@@ -128,25 +204,45 @@ def _open_signed_dir(directory: str | None, deepest: int = 0) -> tuple[Path, Pat
     try:
         target = _as_signed_dir(directory)
         target.mkdir(parents=True, exist_ok=True)
-        root = _scratch_root(target, deepest)
-        root.mkdir(parents=True, exist_ok=True)
-        scratch = Path(tempfile.mkdtemp(prefix=SCRATCH_PREFIX, dir=root))
     except OSError as exc:
         raise SideloadError(
             f"Cannot use '{directory or exc.filename}' as the folder for signed IPAs: "
             f"{exc.strerror or exc}"
         ) from exc
 
-    if deepest and len(str(scratch)) + _ZSIGN_HEADROOM + deepest > _MAX_PATH:
+    failures: list[str] = []
+    for root in _scratch_roots(target, deepest):
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            scratch = Path(tempfile.mkdtemp(prefix=SCRATCH_PREFIX, dir=root))
+        except OSError as exc:
+            failures.append(f"{root}: {exc.strerror or exc}")
+            continue
+        if os.name != "nt" or not deepest or len(str(scratch)) + _ZSIGN_HEADROOM + deepest <= _MAX_PATH:
+            return target, scratch
         shutil.rmtree(scratch, ignore_errors=True)
-        raise SideloadError(
-            f"This app's files are nested too deeply to sign on this machine: the "
-            f"longest path inside it is {deepest} characters, and the working folder "
-            f"'{scratch.parent}' leaves too little of the {_MAX_PATH}-character "
-            "Windows path limit. Choosing a shorter folder for signed IPAs in Settings "
-            "will fix it."
-        )
-    return target, scratch
+
+    tried = "; ".join(failures) or "all available working folders were too long"
+    raise SideloadError(
+        f"This app's files are nested too deeply to sign on this machine: the longest path "
+        f"inside it is {deepest} characters. EmLoad could not create a short enough working "
+        f"folder within the {_MAX_PATH}-character Windows path limit ({tried})."
+    )
+
+
+def _install_signed(
+    output: str,
+    udid: str,
+    target_name: str,
+    progress: ProgressFn,
+) -> None:
+    """Upload and install a signed IPA, relaying installd's progress."""
+    progress("install", 0, f"Uploading to {target_name}\u2026")
+    apps.install(
+        output,
+        udid,
+        progress=lambda u: progress("install", *_install_relay(u, target_name)),
+    )
 
 
 def run_sideload(
@@ -175,7 +271,7 @@ def run_sideload(
     udid = resolve_udid(udid)
 
     info = ipa_module.inspect(ipa_path)
-    if info.get("has_sc_info"):
+    if info.get("encrypted") is True:
         raise signing.SigningError(
             "This IPA is App Store-encrypted (FairPlay) and cannot be sideloaded; "
             "use a decrypted IPA."
@@ -201,27 +297,73 @@ def run_sideload(
     progress("sign", None, "Signing the app\u2026")
     target_dir, scratch = _open_signed_dir(signed_dir, ipa_module.deepest_entry(ipa_path))
     output = str(target_dir / f"{Path(ipa_path).stem}{SIGNED_SUFFIX}")
+    profile_regenerations = 0
+    install_repaired = False
     try:
-        signing.sign_ipa(
-            ipa_path, output,
-            p12_path=bundle["p12_path"],
-            p12_password=bundle["p12_password"],
-            profile_path=bundle["profile_path"],
-            bundle_id=target_bundle_id,
-            display_name=display_name,
-            bundle_version=bundle_version,
-            remove_extensions=remove_extensions,
-            remove_uisd=remove_uisd,
-            enable_file_sharing=enable_file_sharing,
-            temp_folder=str(scratch),
-        )
+        # Installd can reject the signed app because its provisioning profile did
+        # not verify on the device (stale/corrupt profile). When that happens,
+        # retire the old profile and re-issue + re-sign + reinstall with a fresh
+        # one, automatically, up to MAX_PROFILE_REGENERATIONS times.
+        for attempt in range(MAX_PROFILE_REGENERATIONS + 1):
+            try:
+                signing.sign_ipa(
+                    ipa_path, output,
+                    p12_path=bundle["p12_path"],
+                    p12_password=bundle["p12_password"],
+                    profile_path=bundle["profile_path"],
+                    bundle_id=target_bundle_id,
+                    display_name=display_name,
+                    bundle_version=bundle_version,
+                    remove_extensions=remove_extensions,
+                    remove_uisd=remove_uisd,
+                    enable_file_sharing=enable_file_sharing,
+                    temp_folder=str(scratch),
+                )
 
-        progress("install", 0, f"Uploading to {target_name}\u2026")
-        apps.install(
-            output,
-            udid,
-            progress=lambda u: progress("install", *_install_relay(u, target_name)),
-        )
+                try:
+                    _install_signed(output, udid, target_name, progress)
+                except Exception as exc:
+                    if not apps.is_stale_install_journal_error(exc):
+                        raise
+                    # The package is fine; iOS cannot read the app's saved install
+                    # record. Removing that app drops the corrupt journal entry, and
+                    # the clean install below recreates it.
+                    broken_bundle_id = apps.stale_journal_bundle_id(exc) or target_bundle_id
+                    progress(
+                        "install", None,
+                        f"iOS's install record for {app_name} is damaged \u2014 "
+                        "reinstalling it to repair the record (on-device app data "
+                        "will be reset)\u2026",
+                    )
+                    try:
+                        apps.uninstall(broken_bundle_id, udid)
+                    except Exception as uninstall_exc:
+                        raise SideloadError(
+                            f"{app_name} is installed on {target_name}, but its iOS "
+                            "install record is damaged, so EmLoad could not upgrade or "
+                            "remove it. Delete the app on the device, then try again. "
+                            f"(iOS said: {exc})"
+                        ) from uninstall_exc
+                    install_repaired = True
+                    _install_signed(output, udid, target_name, progress)
+                break
+            except Exception as exc:
+                if attempt >= MAX_PROFILE_REGENERATIONS or not (
+                    apps.is_verification_failure(exc) or is_provisioning_error(exc)
+                ):
+                    raise
+                profile_regenerations += 1
+                progress(
+                    "install", None,
+                    "Provisioning issue detected \u2014 issuing a fresh "
+                    f"provisioning profile ({profile_regenerations}/{MAX_PROFILE_REGENERATIONS})\u2026",
+                )
+                bundle = provision.regenerate_profile(
+                    target_bundle_id,
+                    udid,
+                    app_name=app_name,
+                    on_step=lambda message: progress("provision", None, message),
+                )
     finally:
         # Scratch always goes, kept signed IPA or not: it is an unpacked copy of the
         # whole app, worth hundreds of MB, and nothing reads it after signing.
@@ -251,9 +393,14 @@ def run_sideload(
         "installed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "expires_at": expires_at,
     }
+    if profile_regenerations:
+        result["profile_regenerations"] = profile_regenerations
+    if install_repaired:
+        result["install_repaired"] = True
     if record:
         registry.record({
-            **{key: value for key, value in result.items() if key != "signed_ipa"},
+            **{key: value for key, value in result.items()
+               if key not in ("signed_ipa", "profile_regenerations")},
             "options": {
                 "bundle_id": bundle_id,
                 "display_name": display_name,

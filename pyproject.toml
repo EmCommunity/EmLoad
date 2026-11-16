@@ -4,11 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "emload"
-version = "0.1.0"
+version = "0.1.0rc1"
 description = "Sideload iOS apps with a free Apple ID - CLI and Python engine (AltServer-style)"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
 authors = [{ name = "EmLoad contributors" }]
 keywords = ["ios", "sideload", "ipa", "altstore", "altserver", "apple-id"]
 classifiers = [
@@ -29,6 +28,7 @@ dependencies = [
     "cryptography>=44",
     "certifi>=2024.1.1",
     "requests>=2.31",
+    "wsproto>=1.2",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +41,7 @@ emload = "emload.cli:main"
 include = ["emload*"]
 
 [tool.setuptools.package-data]
-emload = ["certs/*.pem", "nugget/assets/*", "nugget/assets/bookrestore/*"]
+emload = ["certs/*.pem"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

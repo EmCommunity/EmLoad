@@ -45,7 +45,7 @@ _GS_ENDPOINT = "https://gsa.apple.com/grandslam/GsService2"
 _TRUSTED_TRIGGER = "https://gsa.apple.com/auth/verify/trusteddevice"
 _VALIDATE = "https://gsa.apple.com/grandslam/GsService2/validate"
 
-_GS_USER_AGENT = "akd/1.0 CFNetwork/978.0.7 Darwin/18.7.0"
+_GS_USER_AGENT = "akd/1.0 CFNetwork/808.1.4"
 _XCODE_APP_INFO = "com.apple.gs.xcode.auth"
 _XCODE_VERSION = "11.2 (11B41)"
 _TIMEOUT = 30
@@ -88,7 +88,10 @@ def _gs_request(params: dict[str, Any], headers: dict[str, str]) -> dict[str, An
     req_headers = {
         "Content-Type": "text/x-xml-plist",
         "Accept": "*/*",
-        "User-Agent": _GS_USER_AGENT,
+        "User-Agent": anisette.gsa_user_agent() or _GS_USER_AGENT,
+        # Apple has intermittently returned HTML 503 after reusing a GSA socket.
+        # A sign-in is only a few requests, so a fresh connection is safer.
+        "Connection": "close",
         "X-MMe-Client-Info": headers.get("X-MMe-Client-Info", ""),
     }
     resp = requests.post(
@@ -98,6 +101,11 @@ def _gs_request(params: dict[str, Any], headers: dict[str, str]) -> dict[str, An
         timeout=_TIMEOUT,
         verify=tls.ca_bundle(),
     )
+    if resp.status_code >= 500:
+        raise GsaError(
+            f"Apple's sign-in service is unavailable right now (HTTP {resp.status_code}). "
+            "Wait a few minutes and try again."
+        )
     resp.raise_for_status()
     return plistlib.loads(resp.content)["Response"]
 

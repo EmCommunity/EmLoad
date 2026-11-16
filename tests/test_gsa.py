@@ -53,3 +53,56 @@ def test_gmt_offset_label():
     offset = datetime.timedelta(hours=5, minutes=30)
     assert anisette._gmt_offset_label(offset) == "GMT+05:30"
     assert anisette._gmt_offset_label(-datetime.timedelta(hours=8)) == "GMT-08:00"
+
+
+def test_gsa_request_uses_windows_client_identity(monkeypatch):
+    import plistlib
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+        content = plistlib.dumps({"Response": {}})
+
+        @staticmethod
+        def raise_for_status():
+            pass
+
+    def post(url, *, headers, **kwargs):
+        captured.update(headers)
+        return Response()
+
+    monkeypatch.setattr(gsa.requests, "post", post)
+    monkeypatch.setattr(gsa.tls, "ca_bundle", lambda: "ca.pem")
+
+    gsa._gs_request(
+        {},
+        anisette._wire_safe_headers(
+            {"X-MMe-Client-Info": "<MacBook> <macOS> <com.apple.dt.Xcode/1>"}
+        ),
+    )
+
+    assert captured["X-MMe-Client-Info"] == anisette._WINDOWS_CLIENT_INFO
+    assert captured["User-Agent"] == "akd/1.0 CFNetwork/808.1.4"
+    assert captured["Connection"] == "close"
+
+
+def test_remote_headers_keep_the_service_mac_identity(monkeypatch):
+    from emload import anisette_remote
+
+    monkeypatch.delenv("EMLOAD_ANISETTE", raising=False)
+    monkeypatch.setattr(
+        anisette_remote,
+        "fetch",
+        lambda: anisette_remote.Fetched(
+            headers={"X-Apple-I-MD": "md"},
+            client_info="<MacBookPro> <macOS;14.0> <com.apple.akd/1.0>",
+            user_agent="akd/1.0",
+            server="https://example.test",
+        ),
+    )
+
+    headers = anisette.get_headers()
+
+    assert headers["X-MMe-Client-Info"] == "<MacBookPro> <macOS;14.0> <com.apple.akd/1.0>"
+    assert anisette.gsa_user_agent() == "akd/1.0"

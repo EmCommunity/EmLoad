@@ -9,15 +9,28 @@
     emload logout                sign out
     emload account               show the signed-in account
     emload teams                 list Apple developer teams
+    emload provision <bundle_id> provision, then install the team's profile
+                                       on the connected device (needs sign-in)
     emload inspect <ipa>         read an IPA's identity without extracting it
     emload sideload <ipa>        provision + sign + install in one step
     emload refresh [--all]       re-sign + reinstall recorded apps before expiry
     emload installs              list recorded sideloads with days left
     emload forget <bundle_id>    stop tracking a sideload
     emload apps                  list apps installed on the device
+    emload jit <bundle_id>       enable JIT for an installed app
     emload uninstall <bundle_id> remove an app from the device
+    emload profiles              list provisioning profiles on the device
+    emload unprovision <uuid>    remove a provisioning profile from the device
     emload signed [--clean]      report / delete kept signed IPAs
     emload setup                 download zsign (needed for signing)
+    emload update                check GitHub for a newer release (RC 1 and later)
+    emload update --install      download it and replace this Windows install
+    emload emside-store status   show EmSideStore state (sign-in, devices, IPA)
+    emload emside-store install  install SideStore on connected device(s) once
+    emload emside-store watch    keep running; auto-install SideStore on attach
+    emload emside-store serve    run the HTTP API (the SideStore app's AltServer
+                                        alternative) so the phone can trigger installs
+    emload rpc                   run the JSON-RPC bridge used by the WinUI app
 
 Every command accepts ``--json`` for machine-readable output, and device
 commands accept ``--udid`` and ``--connection usb|wifi|auto``.
@@ -28,9 +41,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 from typing import Any, Callable
 
-from . import __version__, anisette, apps, device, doctor, gsa, ipa, paths, provision, registry, sideload, signing
+from . import __version__, anisette, apps, device, doctor, gsa, ipa, jit, paths, provision, registry, server, sideload, signing, update
 from .errors import EmLoadError
 
 
@@ -114,6 +128,14 @@ def cmd_version(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_update(args: argparse.Namespace) -> int:
+    if args.install:
+        _emit(args, update.apply(on_progress=_progress(args)))
+        return 0
+    _emit(args, update.check())
+    return 0
+
+
 def cmd_login(args: argparse.Namespace) -> int:
     # Sub-actions on already-signed-in state.
     if args.status:
@@ -171,6 +193,18 @@ def cmd_logout(args: argparse.Namespace) -> int:
 
 def cmd_teams(args: argparse.Namespace) -> int:
     _emit(args, developer_list_teams())
+    return 0
+
+
+def cmd_provision(args: argparse.Namespace) -> int:
+    app_name = args.name or args.bundle_id.rpartition(".")[2] or "EmLoad App"
+    result = provision.provision_device(
+        args.bundle_id,
+        args.udid,
+        app_name=app_name,
+        on_step=lambda message: _progress(args)("provision", None, message),
+    )
+    _emit(args, result)
     return 0
 
 
@@ -259,6 +293,32 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_jit(args: argparse.Namespace) -> int:
+    result = jit.enable_jit(
+        args.udid,
+        args.bundle_id,
+        launch=not args.running_only,
+        relaunch=args.relaunch,
+        on_progress=_progress(args),
+    )
+    _emit(args, result)
+    return 0
+
+
+def cmd_profiles(args: argparse.Namespace) -> int:
+    _emit(args, provision.list_profiles(args.udid))
+    return 0
+
+
+def cmd_unprovision(args: argparse.Namespace) -> int:
+    if args.all:
+        result = provision.clear_profiles(args.udid)
+    else:
+        result = provision.remove_profile(args.uuid, args.udid)
+    _emit(args, result)
+    return 0
+
+
 def cmd_signed(args: argparse.Namespace) -> int:
     if args.clean:
         _emit(args, sideload.clean_signed(args.directory))
@@ -273,6 +333,153 @@ def cmd_setup(args: argparse.Namespace) -> int:
         return 0
     _emit(args, signing.download_zsign())
     return 0
+
+
+def cmd_rpc(args: argparse.Namespace) -> int:
+    """Serve the WinUI front end over stdin/stdout (newline-delimited JSON)."""
+    from .rpc import serve
+
+    return serve()
+
+
+# --------------------------------------------------------------------------- #
+# EmSideStore (AltServer-style auto-installer for SideStore)
+# --------------------------------------------------------------------------- #
+def _emstore_install_options(args: argparse.Namespace) -> dict[str, Any]:
+    """The keyword arguments :func:`emload.server.ensure_installed` takes."""
+    return {
+        "ipa": args.ipa,
+        "download": args.download,
+        "channel": args.channel,
+        "force": args.force,
+        "display_name": args.display_name,
+        "bundle_id": args.bundle_id,
+        "remove_extensions": not args.keep_extensions,
+        "remove_uisd": not args.keep_uisd,
+        "enable_file_sharing": args.file_sharing,
+        "keep_signed": args.keep_signed,
+        "signed_dir": args.signed_dir,
+        "allow_other_platform": args.allow_other_platform,
+    }
+
+
+def cmd_emstore_status(args: argparse.Namespace) -> int:
+    """bundle id, account, local IPA options, and per-device install state."""
+    payload: dict[str, Any] = {
+        "bundle_id": server.SIDESTORE_BUNDLE_ID,
+        "repo": server.SIDESTORE_REPO,
+        "account": gsa.status(),
+        "ipa": [str(path) for path in server.local_candidates()],
+        "devices": [],
+    }
+    seen: set[str] = set()
+    for entry in device.list_devices():
+        serial = str(entry.get("serial") or "")
+        if not serial or serial in seen:
+            continue
+        seen.add(serial)
+        row: dict[str, Any] = {
+            "udid": serial,
+            "connection": entry.get("connection_type"),
+            "emstore_installed": False,
+            "emstore_version": None,
+        }
+        try:
+            present = apps.list_installed(serial).get(payload["bundle_id"])
+            row["emstore_installed"] = present is not None
+            if present:
+                row["emstore_version"] = present.get("version")
+        except Exception:  # noqa: BLE001 - unpaired/untrusted devices can't be read
+            row["emstore_installed"] = None
+        payload["devices"].append(row)
+    _emit(args, payload)
+    return 0
+
+
+def cmd_emstore_install(args: argparse.Namespace) -> int:
+    options = _emstore_install_options(args)
+    serials = (
+        [args.udid]
+        if args.udid
+        else server.distinct_serials(device.list_devices())
+    )
+    if not serials:
+        _emit(args, {
+            "status": "error",
+            "error": "No device connected; plug in an iPhone (or pass --udid).",
+        })
+        return 1
+
+    results, failed = [], 0
+    for serial in serials:
+        try:
+            result = server.ensure_installed(
+                serial, on_progress=_progress(args), **options
+            )
+            results.append(result)
+        except EmLoadError as exc:
+            failed += 1
+            results.append({"udid": serial, "status": "error", "error": str(exc)})
+    _emit(args, {"results": results, "failed": failed})
+    return 1 if failed else 0
+
+
+def cmd_emstore_watch(args: argparse.Namespace) -> int:
+    """Run until Ctrl+C, installing EmStore on every device as it attaches."""
+    stop = threading.Event()
+
+    def on_log(message: str) -> None:
+        if getattr(args, "json", False):
+            sys.stderr.write(json.dumps({"log": message}) + "\n")
+            sys.stderr.flush()
+        else:
+            print(message, file=sys.stderr)
+
+    def on_result(result: dict[str, Any]) -> None:
+        if getattr(args, "json", False):
+            print(json.dumps(result, ensure_ascii=False, default=str))
+            sys.stdout.flush()
+
+    if not getattr(args, "json", False):
+        print(
+            "EmStoreServer: waiting for an iPhone or iPad to connect "
+            "(Ctrl+C to stop)\u2026",
+            file=sys.stderr,
+        )
+    try:
+        server.watch_and_install(
+            stop,
+            on_log=on_log,
+            on_result=on_result,
+            filter_udid=args.udid,
+            initial=device.list_devices(),
+            **_emstore_install_options(args),
+        )
+    except KeyboardInterrupt:
+        stop.set()
+    return 0
+
+
+def cmd_emstore_serve(args: argparse.Namespace) -> int:
+    """Run the HTTP API (status/devices/apps/jobs) until Ctrl+C."""
+    def on_log(message: str) -> None:
+        if getattr(args, "json", False):
+            sys.stderr.write(json.dumps({"log": message}) + "\n")
+            sys.stderr.flush()
+        else:
+            print(message, file=sys.stderr)
+
+    server.run_server(host=args.host, port=args.port, log=on_log)
+    return 0
+
+
+def cmd_emstore_server(args: argparse.Namespace) -> int:
+    return {
+        "status": cmd_emstore_status,
+        "install": cmd_emstore_install,
+        "watch": cmd_emstore_watch,
+        "serve": cmd_emstore_serve,
+    }[args.action](args)
 
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +532,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("teams", parents=[common], help="list Apple developer teams")
 
+    provision_parser = sub.add_parser(
+        "provision", parents=[common, target],
+        help="provision, then install the team's profile on the connected device",
+    )
+    provision_parser.add_argument("bundle_id", help="bundle identifier to provision")
+    provision_parser.add_argument("--name", default=None,
+                                  help="App ID name to register (default: derived from the bundle id)")
+
     inspect_parser = sub.add_parser("inspect", parents=[common], help="read an IPA's identity")
     inspect_parser.add_argument("ipa", help="path to an .ipa file")
 
@@ -366,12 +581,97 @@ def build_parser() -> argparse.ArgumentParser:
                                       help="uninstall an app by bundle id")
     uninstall_parser.add_argument("bundle_id", help="bundle identifier to remove")
 
+    jit_parser = sub.add_parser(
+        "jit", parents=[common, target],
+        help="enable JIT for an installed app (debugserver attach, then detach)",
+    )
+    jit_parser.add_argument("bundle_id", help="bundle identifier of the installed app")
+    jit_parser.add_argument(
+        "--running-only", action="store_true",
+        help="attach only when the app is already running; do not launch it",
+    )
+    jit_parser.add_argument(
+        "--relaunch", action="store_true",
+        help="quit the app if it is open, then launch it suspended before attaching",
+    )
+
+    sub.add_parser("profiles", parents=[common, target],
+                   help="list provisioning profiles installed on the device")
+
+    unprovision_parser = sub.add_parser(
+        "unprovision", parents=[common, target],
+        help="remove a provisioning profile from the device",
+    )
+    unprovision_parser.add_argument("uuid", nargs="?", default=None,
+                                    help="profile UUID to remove (or use --all)")
+    unprovision_parser.add_argument("--all", action="store_true",
+                                    help="remove every provisioning profile on the device")
+
     signed_parser = sub.add_parser("signed", parents=[common], help="report kept signed IPAs")
     signed_parser.add_argument("--clean", action="store_true", help="delete them")
     signed_parser.add_argument("--directory", default=None, help="folder to inspect")
 
-    setup_parser = sub.add_parser("setup", parents=[common], help="download zsign (required to sign)")
+    setup_parser = sub.add_parser(
+        "setup", parents=[common],
+        help="download zsign (required to sign)",
+    )
+    update_parser = sub.add_parser(
+        "update", parents=[common],
+        help="check for a newer GitHub release (pre-releases included, from RC 1)",
+    )
+    update_parser.add_argument(
+        "--install", action="store_true",
+        help="download the update and replace this Windows install, then quit",
+    )
     setup_parser.add_argument("--force", action="store_true", help="re-download even if present")
+
+    emstore_parser = sub.add_parser(
+        "emside-store", aliases=["emstore-server", "emside-store-server"],
+        parents=[common, transport],
+        help="AltServer-style SideStore auto-installer: status / install / watch / serve",
+    )
+    emstore_parser.add_argument(
+        "action", choices=["status", "install", "watch", "serve"],
+        help="status: report sign-in + devices + IPA state; "
+             "install: sideload SideStore onto connected device(s) once; "
+             "watch: keep running and auto-install or refresh SideStore when a device attaches; "
+             "serve: run the HTTP API the SideStore app talks to",
+    )
+    emstore_parser.add_argument("--host", default="127.0.0.1",
+                                help="serve: address to bind (default: 127.0.0.1)")
+    emstore_parser.add_argument("--port", type=int, default=server.DEFAULT_PORT,
+                                help=f"serve: port to bind (default: {server.DEFAULT_PORT})")
+    emstore_parser.add_argument("--ipa", default=None,
+                                help="path to the SideStore .ipa (default: auto-detect, then download)")
+    emstore_parser.add_argument("--download", action="store_true",
+                                help="always fetch the latest published SideStore build from GitHub")
+    emstore_parser.add_argument("--channel", default=None, choices=["stable", "alpha", "nightly"],
+                                help="GitHub release channel to download (default: latest release)")
+    emstore_parser.add_argument("--force", action="store_true",
+                                help="reinstall SideStore even if it is already on the device")
+    emstore_parser.add_argument("--udid", default=None,
+                                help="act on this device only (default: every connected device)")
+    emstore_parser.add_argument("-n", "--display-name", default=None,
+                                help="override the app's display name (e.g. SideStore)")
+    emstore_parser.add_argument("-b", "--bundle-id", default=None,
+                                help="override the bundle id (default: com.SideStore.SideStore)")
+    emstore_parser.add_argument("--keep-extensions", action="store_true",
+                                help="keep app extensions (uses extra App ID slots)")
+    emstore_parser.add_argument("--keep-uisd", action="store_true",
+                                help="keep UISupportedDevices device restrictions")
+    emstore_parser.add_argument("--file-sharing", action="store_true",
+                                help="enable Files-app sharing (UIFileSharingEnabled)")
+    emstore_parser.add_argument("--keep-signed", action="store_true",
+                                help="keep the signed .ipa on disk")
+    emstore_parser.add_argument("--signed-dir", default=None,
+                                help="folder for signed .ipa files and scratch")
+    emstore_parser.add_argument("--allow-other-platform", action="store_true",
+                                help="allow installing to a mismatched platform")
+
+    sub.add_parser(
+        "rpc", parents=[common],
+        help="serve the JSON-RPC bridge used by the WinUI front end (stdio)",
+    )
 
     return parser
 
@@ -410,6 +710,7 @@ def dispatch(args: argparse.Namespace) -> int:
         "account": cmd_account,
         "logout": cmd_logout,
         "teams": cmd_teams,
+        "provision": cmd_provision,
         "inspect": cmd_inspect,
         "sideload": cmd_sideload,
         "refresh": cmd_refresh,
@@ -417,8 +718,16 @@ def dispatch(args: argparse.Namespace) -> int:
         "forget": cmd_forget,
         "apps": cmd_apps,
         "uninstall": cmd_uninstall,
+        "jit": cmd_jit,
+        "profiles": cmd_profiles,
+        "unprovision": cmd_unprovision,
         "signed": cmd_signed,
         "setup": cmd_setup,
+        "update": cmd_update,
+        "emside-store": cmd_emstore_server,
+        "emstore-server": cmd_emstore_server,
+        "emside-store-server": cmd_emstore_server,
+        "rpc": cmd_rpc,
     }
     return commands[args.command](args)
 

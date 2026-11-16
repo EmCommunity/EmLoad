@@ -12,8 +12,9 @@ def test_parser_has_expected_commands():
     names = sub.choices.keys()
     for expected in (
         "doctor", "devices", "device-info", "login", "logout", "account",
-        "teams", "inspect", "sideload", "refresh", "installs", "forget",
-        "apps", "uninstall", "signed", "setup", "version",
+        "teams", "provision", "inspect", "sideload", "refresh", "installs",
+        "forget", "apps", "jit", "uninstall", "profiles", "unprovision", "signed",
+        "setup", "update", "emstore-server", "rpc", "version",
     ):
         assert expected in names
 

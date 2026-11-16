@@ -159,6 +159,64 @@ async def _install_async(
 _FREE_PROFILE_LIMIT = "maximum number of installed apps using a free developer profile"
 
 
+# installd error names / human descriptions that mean the app's signature or
+# provisioning profile did not verify on the device. A stale or broken profile
+# is the usual culprit, and the cure is a fresh one - not a re-install of the
+# same bytes (see ``provision.regenerate_profile``).
+_VERIFICATION_ERRORS = ("ApplicationVerificationFailed",)
+_VERIFICATION_HINTS = (
+    "could not be verified",
+    "couldn't be verified",
+    "failed to verify",
+    "verification failed",
+    "does not verify",
+    "integrity",
+)
+
+
+def is_verification_failure(exc: Exception) -> bool:
+    """True when ``exc`` is the device rejecting the app's integrity.
+
+    Matches both the installd error name and the human description, e.g.
+    ``ApplicationVerificationFailed: The application could not be verified.``
+    Deliberately narrow: disk-full, the free-profile ceiling, and other install
+    problems must not trigger a profile regeneration.
+    """
+    text = str(exc)
+    lowered = text.lower()
+    return any(marker in lowered for marker in _VERIFICATION_ERRORS) or any(
+        hint in lowered for hint in _VERIFICATION_HINTS
+    )
+
+
+# iOS keeps a per-app record in MobileInstallation's journal. An interrupted
+# install can leave that plist corrupt; every later install then fails with
+# "Failed to unarchive journal entry data". Removing the app drops the bad
+# record, so uninstall + reinstall is the cure.
+_JOURNAL_HINTS = (
+    "failed to unarchive journal entry data",
+    "unarchive journal entry data",
+)
+
+
+def is_stale_install_journal_error(exc: Exception) -> bool:
+    """True when installd cannot read its saved install record for an app.
+
+    This is device-side journal corruption rather than a bad package, so
+    re-signing or re-provisioning cannot fix it; the stale record must go.
+    """
+    text = str(exc).lower()
+    if any(hint in text for hint in _JOURNAL_HINTS):
+        return True
+    return "mobileinstallation/journal" in text and "unarchive" in text
+
+
+def stale_journal_bundle_id(exc: Exception) -> str | None:
+    """The bundle id of the corrupt install record named in ``exc``, if any."""
+    match = re.search(r"Journal/[^/\s]*?_([^/\s]+?)\.plist", str(exc))
+    return match.group(1) if match else None
+
+
 def _installed_ids(description: str) -> list[str]:
     """The `TEAMID.bundle.id` entries installd names as occupying the slots."""
     return re.findall(r'"([A-Z0-9]{10}\.[^"]+)"', description or "")
