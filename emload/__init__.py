@@ -1,6 +1,6 @@
 """EmLoad - sideload iOS apps with a free Apple ID.
 
-A Python CLI and PySide6 desktop app (AltServer-style) that:
+A Python CLI and engine (AltServer-style) that:
 
 1. talks to your iPhone over USB/Wi-Fi (pymobiledevice3),
 2. signs you in to your Apple ID locally (GrandSlam + in-process anisette),

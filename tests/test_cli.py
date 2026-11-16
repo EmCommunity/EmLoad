@@ -13,7 +13,7 @@ def test_parser_has_expected_commands():
     for expected in (
         "doctor", "devices", "device-info", "login", "logout", "account",
         "teams", "inspect", "sideload", "refresh", "installs", "forget",
-        "apps", "uninstall", "signed", "setup", "gui", "version",
+        "apps", "uninstall", "signed", "setup", "version",
     ):
         assert expected in names
 

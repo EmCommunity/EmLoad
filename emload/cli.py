@@ -1,6 +1,6 @@
 """EmLoad command-line interface.
 
-``emload`` mirrors what the GUI can do, so the same engine serves both:
+``emload`` is the command-line interface for the engine:
 
     emload doctor                check the environment for sideloading readiness
     emload devices               list connected iOS devices
@@ -18,7 +18,6 @@
     emload uninstall <bundle_id> remove an app from the device
     emload signed [--clean]      report / delete kept signed IPAs
     emload setup                 download zsign (needed for signing)
-    emload gui                   launch the desktop app
 
 Every command accepts ``--json`` for machine-readable output, and device
 commands accept ``--udid`` and ``--connection usb|wifi|auto``.
@@ -276,13 +275,6 @@ def cmd_setup(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_gui(args: argparse.Namespace) -> int:
-    from .gui.app import run_gui
-
-    run_gui()
-    return 0
-
-
 # --------------------------------------------------------------------------- #
 # Argument parsing
 # --------------------------------------------------------------------------- #
@@ -381,8 +373,6 @@ def build_parser() -> argparse.ArgumentParser:
     setup_parser = sub.add_parser("setup", parents=[common], help="download zsign (required to sign)")
     setup_parser.add_argument("--force", action="store_true", help="re-download even if present")
 
-    sub.add_parser("gui", parents=[common], help="launch the desktop app")
-
     return parser
 
 
@@ -429,7 +419,6 @@ def dispatch(args: argparse.Namespace) -> int:
         "uninstall": cmd_uninstall,
         "signed": cmd_signed,
         "setup": cmd_setup,
-        "gui": cmd_gui,
     }
     return commands[args.command](args)
 

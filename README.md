@@ -1,7 +1,7 @@
 # EmLoad
 
 Sideload iOS apps with a free Apple ID — an AltServer-style toolkit with a
-**Python CLI** and a **PySide6 desktop app**.
+**Python CLI** and engine.
 
 No jailbreak. No paid developer account. No third-party middleman: EmLoad talks
 to Apple directly, the same way Xcode does, and to your iPhone over USB/Wi-Fi
@@ -9,9 +9,9 @@ through `pymobiledevice3`.
 
 ```
 ┌─────────────────────┐   engine (Python)   ┌──────────────────────────┐
-│ emload (CLI)        │                     │ Apple ID auth (GrandSlam)│
-│ emload-gui (PySide6)│ ──────────────────▶ │ + anisette (in-process)  │
-└─────────────────────┘                     │ + provisioning API       │
+│ emload (CLI)        │ ──────────────────▶ │ Apple ID auth (GrandSlam)│
+└─────────────────────┘                     │ + anisette (in-process)  │
+                                            │ + provisioning API       │
                                             │ + zsign code signing     │
                                             │ + pymobiledevice3 device │
                                             └──────────────────────────┘
@@ -33,8 +33,8 @@ through `pymobiledevice3`.
 - **Team-scoped bundle IDs** for free accounts, plus optional overrides
   (display name, bundle id, version) and extension stripping
 - **7-day refresh**: every install is recorded with its expiry; `emload refresh`
-  (or the GUI's Library tab) re-signs and reinstalls before the profile expires
-- **Live install progress** in both CLI and GUI (upload MBs + installd phases)
+  re-signs and reinstalls before the profile expires
+- **Live install progress** in the CLI (upload MBs + installd phases)
 - **Miscellaneous tweaks (Nugget-based)**: SpringBoard options, daemon toggles
   and Liquid Glass settings applied with the sparserestore backup-restore
   exploit on iOS 17.0 - 18.1, or **BookRestore** (AFC / Restore methods) on
@@ -61,13 +61,9 @@ git clone https://github.com/EmCommunity/EmLoad
 cd EmLoad
 py -3.12 -m venv .venv
 .\.venv\Scripts\python -m pip install -e .          # CLI + engine
-.\.venv\Scripts\python -m pip install -e ".[gui]"   # + PySide6 GUI
 emload setup        # downloads zsign (required for signing)
 emload doctor       # check your environment
 ```
-
-> Installing PySide6 only adds the GUI; the CLI works without it via
-> `pip install -e .` alone.
 
 ## CLI
 
@@ -89,7 +85,6 @@ emload apps                  list apps installed on the device
 emload uninstall <bundle_id> remove an app from the device
 emload signed [--clean]      report / delete kept signed IPAs
 emload setup                 download zsign (needed for signing)
-emload gui                   launch the desktop app
 ```
 
 Every command accepts `--json` for scripting. Device commands accept `--udid`
@@ -121,30 +116,6 @@ emload sideload App.ipa \
   --keep-signed                   # keep <App>_Signed.ipa on disk
   --signed-dir D:\signed          # where signed files + scratch go
 ```
-
-## GUI
-
-```powershell
-emload gui
-# or on Windows: run.bat  (always uses the project's .venv)
-```
-
-The desktop app has a sidebar with seven pages:
-
-- **Devices** — live inventory (USB + Wi-Fi), refreshed automatically as
-  devices attach/detach
-- **Sideload** — drag & drop an `.ipa`, see its icon/name/version, tweak
-  options, pick the target device, and watch the install with a live progress
-  bar and log
-- **Library** — every sideload this machine has done, with days-left and
-  one-click **Refresh** / **Uninstall** / **Forget**
-- **Miscellaneous** — SpringBoard / Daemons / Liquid Glass tweak dialogs and
-  a **Respring Device** button (Nugget-style apply: sparserestore on iOS
-  17.0 - 18.1, BookRestore AFC or Restore on 18.2+; the dialogs expose
-  apply-method and transfer-mode options)
-- **Account** — Apple ID sign-in with a 2FA-aware dialog
-- **Settings** — connection preference, signed-IPA folder, zsign download
-- **Diagnostics** — `doctor` results rendered
 
 ## How it works
 
@@ -200,8 +171,7 @@ The desktop app has a sidebar with seven pages:
 MIT. EmLoad is not affiliated with Apple Inc. Only install software you are
 entitled to run.
 
-The Miscellaneous tweak feature (the `emload.nugget` package and the dialogs
-in `emload/gui/nugget_dialogs.py`) is ported from
+The Miscellaneous tweak feature (the `emload.nugget` package) is ported from
 [Nugget27](https://github.com/leminlimez/Nugget/), which is licensed under
 the **AGPL-3.0**; ported files carry attribution headers. Same for the
 respring HTML asset. Please respect that license if you reuse that code.

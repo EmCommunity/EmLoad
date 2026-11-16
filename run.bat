@@ -1,9 +1,9 @@
 @echo off
-rem Launch the EmLoad desktop app using the local virtual environment.
+rem Launch the EmLoad CLI using the local virtual environment.
 setlocal
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\pythonw.exe" (
+if not exist ".venv\Scripts\emload.exe" (
     echo Virtual environment not found. Create it first:
     echo   python -m venv .venv
     echo   .venv\Scripts\pip install -r requirements.txt
@@ -11,4 +11,4 @@ if not exist ".venv\Scripts\pythonw.exe" (
     exit /b 1
 )
 
-".venv\Scripts\pythonw.exe" -m emload gui
+".venv\Scripts\emload.exe" %*
