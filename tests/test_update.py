@@ -30,8 +30,10 @@ def test_version_order_and_pep440():
     assert update.parse_version("beta") is None
 
 
-def test_this_release_is_the_first_ota_version():
-    assert update.parse_version(__version__) == update.OTA_SINCE
+def test_this_release_is_eligible_for_ota():
+    current = update.parse_version(__version__)
+    assert current == update.parse_version("0.2.0b1")
+    assert current > update.OTA_SINCE
     assert str(update.OTA_SINCE) == "0.1.0-rc1"
 
 

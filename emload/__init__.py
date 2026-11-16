@@ -9,4 +9,4 @@ A Python engine and CLI (AltServer-style) that:
 5. tracks expiries and can refresh apps before their profiles run out.
 """
 
-__version__ = "0.1.0rc1"
+__version__ = "0.2.0b1"

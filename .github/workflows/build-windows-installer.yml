@@ -6,12 +6,12 @@ on:
       version:
         description: Release version
         required: true
-        default: '0.1.0'
+        default: '0.2.0'
         type: string
       channel:
         description: Release channel
         required: false
-        default: 'RC 1'
+        default: 'Beta 1'
         type: string
       offline:
         description: Bundle Python dependency wheels for offline installation

@@ -45,11 +45,11 @@ self-contained (`WindowsPackageType=None`).
 
 | Parameter | Default | Appears in |
 | --- | --- | --- |
-| `-Version` | `0.1.0` | file version, `AppVersion` |
-| `-Prerelease` | `RC 1` | "EmLoad 0.1.0 RC 1" in Setup and Apps list |
+| `-Version` | `0.2.0` | file version, `AppVersion` |
+| `-Prerelease` | `Beta 1` | "EmLoad 0.2.0 Beta 1" in Setup and Apps list |
 | `-OutputTag` | `<version>-<slug>` (`0.1.0-beta2`) | output file names |
 
-The Python side carries the matching PEP 440 version (`0.1.0rc1` in
+The Python side carries the matching PEP 440 version (`0.2.0b1` in
 `pyproject.toml` and `emload/__init__.py`). Keep the two in sync when cutting a
 release.
 

@@ -47,7 +47,7 @@
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\EmLoad CLI'),
     [string]$Source,
-    [string]$DisplayVersion = '0.1.0 RC 1',
+    [string]$DisplayVersion = '0.2.0 Beta 1',
     [string]$ProductName = 'EmLoad CLI',
 
     [switch]$SkipPath,

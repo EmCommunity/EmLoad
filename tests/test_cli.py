@@ -22,7 +22,7 @@ def test_parser_has_expected_commands():
 def test_version_command(capsys):
     assert cli.main(["version"]) == 0
     out = capsys.readouterr().out
-    assert "0.1.0" in out
+    assert "0.2.0b1" in out
 
 
 def test_unknown_command_fails():
